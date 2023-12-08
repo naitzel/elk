@@ -4,6 +4,9 @@ if [ x${ELASTIC_PASSWORD} == x ]; then
 elif [ x${KIBANA_PASSWORD} == x ]; then
     echo "Set the KIBANA_PASSWORD environment variable in the .env file";
     exit 1;
+elif [ x${APM_SERVER_PASSWORD} == x ]; then
+    echo "Set the APM_SERVER_PASSWORD environment variable in the .env file";
+    exit 1;
 fi;
 
 if [ ! -f config/certs/ca.zip ]; then
@@ -38,3 +41,11 @@ until curl -s -X POST --cacert config/certs/ca/ca.crt \
     -u "elastic:${ELASTIC_PASSWORD}" \
     -H "Content-Type: application/json" https://elasticsearch:9200/_security/user/kibana_system/_password \
     -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+
+echo "Setting apm_system password";
+until curl -s -X POST --cacert config/certs/ca/ca.crt \
+    -u "elastic:${ELASTIC_PASSWORD}" \
+    -H "Content-Type: application/json" https://es01:9200/_security/user/apm_system/_password \
+    -d "{\"password\":\"${APM_SERVER_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+
+echo "All done!";

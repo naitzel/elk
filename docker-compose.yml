@@ -58,10 +58,11 @@ services:
     healthcheck:
       interval: 20s
       retries: 10
-      test: curl --cacert /usr/share/elasticsearch/config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -s https://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+      test: curl --cacert config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -s https://localhost:9200/_cluster/health | grep -vq '"status":"red"'
 
   kibana:
     image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    user: "1000:1000"
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -99,6 +100,40 @@ services:
       interval: 10s
       retries: 20
       test: curl --cacert /usr/share/kibana/config/certs/ca/ca.crt --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null https://localhost:5601/api/status
+
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:${STACK_VERSION}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kibana:
+        condition: service_healthy
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
+    cap_drop: ["ALL"]
+    ports:
+      - 8200:8200
+    networks:
+      - elastic
+    volumes:
+      - escerts:/usr/share/apm-server/config/certs:ro
+    environment:
+      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=apm_system
+      - ELASTICSEARCH_PASSWORD=${APM_SERVER_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca/ca.crt
+    command: >
+       apm-server -e
+         -E apm-server.rum.enabled=true
+         -E setup.template.settings.index.number_of_replicas=0
+         -E output.elasticsearch.hosts=https://elasticsearch:9200
+         -E output.elasticsearch.username=elastic
+         -E output.elasticsearch.password=${ELASTIC_PASSWORD}
+         -E output.elasticsearch.ssl.enabled=true
+         -E output.elasticsearch.ssl.certificate_authorities=config/certs/ca/ca.crt
+    healthcheck:
+      interval: 10s
+      retries: 12
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:8200/
 
 volumes:
   escerts:
