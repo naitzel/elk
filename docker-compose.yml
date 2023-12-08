@@ -56,7 +56,7 @@ services:
     healthcheck:
       interval: 20s
       retries: 10
-      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+      test: curl -k -u elastic:${ELASTIC_PASSWORD} -s https://localhost:9200/_cluster/health | grep -vq '"status":"red"'
 
 volumes:
   escerts:
