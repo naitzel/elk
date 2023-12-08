@@ -1,0 +1,69 @@
+version: '2.23'
+
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    user: "0"
+    command: bash -c /setup/initial.sh
+    volumes:
+      - escerts:/usr/share/elasticsearch/config/certs
+      - ./docker/setup:/setup:ro
+    networks:
+      - elastic
+    healthcheck:
+      test: [ "CMD-SHELL", "[ -f config/certs/elasticsearch/elasticsearch.crt ]" ]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    user: "1000:1000"
+    depends_on:
+      setup:
+        condition: service_healthy
+    environment:
+      - bootstrap.memory_lock=true
+      - cluster.name=${CLUSTER_NAME}
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-XX:UseAVX=2 -Xms1g -Xmx1g
+
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/elasticsearch/elasticsearch.key
+      - xpack.security.http.ssl.certificate=certs/elasticsearch/elasticsearch.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/elasticsearch/elasticsearch.key
+      - xpack.security.transport.ssl.certificate=certs/elasticsearch/elasticsearch.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+    volumes:
+      - escerts:/usr/share/elasticsearch/config/certs:ro
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - elastic
+    healthcheck:
+      interval: 20s
+      retries: 10
+      test: curl -s http://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+
+volumes:
+  escerts:
+    driver: local
+  esdata:
+    driver: local
+
+networks:
+  elastic:
+    driver: bridge
