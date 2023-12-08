@@ -5,6 +5,8 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
     user: "0"
     command: bash -c /setup/initial.sh
+    env_file:
+      - .env
     volumes:
       - escerts:/usr/share/elasticsearch/config/certs
       - ./docker/setup:/setup:ro
@@ -56,12 +58,54 @@ services:
     healthcheck:
       interval: 20s
       retries: 10
-      test: curl -k -u elastic:${ELASTIC_PASSWORD} -s https://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+      test: curl --cacert /usr/share/elasticsearch/config/certs/ca/ca.crt -u elastic:${ELASTIC_PASSWORD} -s https://localhost:9200/_cluster/health | grep -vq '"status":"red"'
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - SERVERNAME=kibana
+      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+      - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca/ca.crt
+      - ENCRYPTION_KEY=${XPACK_ENCRYPTION_KEY}
+      - SERVER_SSL_ENABLED=true
+      - SERVER_SSL_KEY=/usr/share/kibana/config/certs/kibana/kibana.key
+      - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/kibana/kibana.crt
+      - SERVER_SSL_CERTIFICATEAUTHORITIES=/usr/share/kibana/config/certs/ca/ca.crt
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/kibana/kibana.key
+      - xpack.security.http.ssl.certificate=certs/kibana/kibana.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/kibana/kibana.key
+      - xpack.security.transport.ssl.certificate=certs/kibana/kibana.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+    volumes:
+      - escerts:/usr/share/kibana/config/certs:ro
+      - kbdata:/usr/share/kibana/data
+    ports:
+      - 5601:5601
+    networks:
+      - elastic
+    healthcheck:
+      interval: 10s
+      retries: 20
+      test: curl --cacert /usr/share/kibana/config/certs/ca/ca.crt --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null https://localhost:5601/api/status
 
 volumes:
   escerts:
     driver: local
   esdata:
+    driver: local
+  kbdata:
     driver: local
 
 networks:
